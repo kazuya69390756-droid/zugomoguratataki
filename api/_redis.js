@@ -1,12 +1,31 @@
 // Upstash Redis REST helper (same pattern as zugofes lib/store.js)
+const CANDIDATES = [
+  ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+  ['KV_REST_API_URL', 'KV_REST_API_TOKEN'],
+  ['STORAGE_URL', 'STORAGE_REST_TOKEN'],
+  ['STORAGE_REST_URL', 'STORAGE_REST_TOKEN'],
+  ['REDIS_REST_URL', 'REDIS_REST_TOKEN'],
+];
+
 function redisConfig() {
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    return { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+  for (const [u, t] of CANDIDATES) {
+    if (process.env[u] && process.env[t]) {
+      return { url: process.env[u], token: process.env[t] };
+    }
   }
-  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-    return { url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN };
+  // any custom prefix ending in _URL with a matching token var
+  for (const key of Object.keys(process.env)) {
+    if (/_URL$/.test(key) && /^https:\/\//.test(process.env[key] || '')) {
+      const prefix = key.slice(0, -4);
+      const token = process.env[`${prefix}_TOKEN`] || process.env[`${prefix}_REST_TOKEN`];
+      if (token) return { url: process.env[key], token };
+    }
   }
   return null;
+}
+
+function presentEnvNames() {
+  return Object.keys(process.env).filter((k) => /URL|TOKEN|REDIS|KV|STORAGE|UPSTASH/.test(k));
 }
 
 async function redisCmd(cmd) {
@@ -26,4 +45,4 @@ async function redisCmd(cmd) {
   return data.result;
 }
 
-module.exports = { redisCmd, redisConfig };
+module.exports = { redisCmd, redisConfig, presentEnvNames };

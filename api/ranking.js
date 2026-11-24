@@ -1,6 +1,6 @@
 // GET /api/ranking?name=<optional>
 // -> {ok, total, entries:[top10], me:{rank,best,myTop3} | null}
-const { redisCmd, redisConfig } = require('./_redis');
+const { redisCmd, redisConfig, presentEnvNames } = require('./_redis');
 
 const RANK_KEY = 'zt:ranking';
 const DETAIL_KEY = 'zt:details';
@@ -10,7 +10,7 @@ const TOP_N = 10;
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!redisConfig()) {
-    res.status(503).json({ ok: false, error: 'ranking_not_ready' });
+    res.status(503).json({ ok: false, error: 'ranking_not_ready', envNames: presentEnvNames() });
     return;
   }
   try {

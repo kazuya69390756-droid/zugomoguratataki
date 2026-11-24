@@ -7,6 +7,18 @@ const DETAIL_KEY = 'zt:details';
 const TOP3_KEY = 'zt:top3';
 const TOP_N = 10;
 
+// Titles are derived from the score (same scale as the game's rankFor),
+// so a scale change applies to past entries too.
+function titleFor(s) {
+  if (s >= 3000) return '期待値マスター';
+  if (s >= 2500) return '期待値番長';
+  if (s >= 2000) return '鉄板ハンター';
+  if (s >= 1500) return 'パドックの達人';
+  if (s >= 1000) return '見習い予想家';
+  if (s >= 500) return 'まだまだこれから';
+  return 'ずごに遊ばれた';
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!redisConfig()) {
@@ -30,7 +42,7 @@ module.exports = async (req, res) => {
         score,
         hits: detail.hits ?? null,
         combo: detail.combo ?? null,
-        title: detail.title || '',
+        title: titleFor(score),
         ts: detail.ts || null,
       });
     }
@@ -47,7 +59,7 @@ module.exports = async (req, res) => {
           name: myName,
           best: Number(myBest),
           rank: rankIdx === null ? null : rankIdx + 1,
-          myTop3: Array.isArray(myTop3) ? myTop3 : [],
+          myTop3: (Array.isArray(myTop3) ? myTop3 : []).map((r) => ({ ...r, title: titleFor(r.score) })),
         };
       }
     }

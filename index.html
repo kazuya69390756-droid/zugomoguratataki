@@ -323,7 +323,19 @@
       .result-grid .rv{ font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; }
 
       /* Ranking registration (result overlay) */
-      .rank-form{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; }
+      .rank-form{
+        display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%;
+        background:linear-gradient(180deg, rgba(245,197,66,.15), rgba(245,197,66,.04));
+        border:1px solid var(--gold); border-radius:14px; padding:12px;
+      }
+      .rg-cta{ flex:1 1 100%; margin:0; font-size:16px; font-weight:900; letter-spacing:.05em; color:var(--gold); text-align:center; }
+      .rg-hint{ flex:1 1 100%; margin:0; font-size:12px; color:var(--ink-dim); text-align:center; }
+      #btn-register{ animation:rgpulse 1.6s ease-in-out infinite; }
+      #btn-register.stop{ animation:none; }
+      @keyframes rgpulse{
+        0%,100%{ box-shadow:0 0 0 0 rgba(245,197,66,.55); }
+        50%{ box-shadow:0 0 0 9px rgba(245,197,66,0); }
+      }
       .rank-form input{
         flex:1 1 160px; max-width:250px; background:rgba(255,255,255,.07);
         border:1px solid var(--panel-line); border-radius:99px; padding:10px 16px;
@@ -443,8 +455,10 @@
           </div>
           <p class="copy-note copy-note-main" id="copy-note-main" hidden>コピーしました！Xのリプ欄に貼り付けて投稿できます。</p>
           <div class="rank-form">
+            <p class="rg-cta">ランキングに登録しよう！</p>
             <input id="rg-name" type="text" maxlength="24" placeholder="名前（XのIDなど）" autocomplete="off" />
             <button class="btn btn-primary btn-small" id="btn-register" type="button">ランキングに登録</button>
+            <p class="rg-hint">一度登録すれば、次回からは自動で登録されるよ</p>
           </div>
           <p class="rg-status" id="rg-status"></p>
         </div>
@@ -954,14 +968,13 @@
           return { score: score, hits: hits, combo: combo, title: title };
         }
 
-        btnRegister.addEventListener('click', function(){
-          var name = nameInput.value.replace(/\s+/g, ' ').trim();
-          if (!name){ rgStatus.textContent = '名前を入れてね'; nameInput.focus(); return; }
-          try { localStorage.setItem('zt_name', name); } catch(e){}
-          savedName = name;
+        var submittedKey = '';
+
+        function submitScore(name, auto){
           var r = currentResult();
+          submittedKey = r.score + '|' + r.hits;
           btnRegister.disabled = true;
-          rgStatus.textContent = '登録中…';
+          rgStatus.textContent = auto ? 'ランキングに自動登録中…' : '登録中…';
           fetch('/api/score', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -971,25 +984,55 @@
           }).then(function(out){
             btnRegister.disabled = false;
             if (out.ok && out.j.ok){
+              btnRegister.classList.add('stop');
               if (out.j.updated){
-                rgStatus.textContent = '登録しました！ ' + out.j.rank + '位（' + out.j.total + '人中）';
+                rgStatus.textContent = (auto ? '自動で登録したよ！ ' : '登録しました！ ') + out.j.rank + '位（' + out.j.total + '人中）' + (auto ? '' : ' 次回からは自動で登録されるよ');
               } else {
                 rgStatus.textContent = '自己ベスト ' + out.j.best + '点で登録済み（現在' + out.j.rank + '位）';
               }
             } else if (out.j && out.j.error === 'ranking_not_ready'){
               rgStatus.textContent = 'ランキングは準備中です';
             } else {
+              submittedKey = '';
               rgStatus.textContent = '登録に失敗しました。もう一度試してね';
             }
           }).catch(function(){
             btnRegister.disabled = false;
+            submittedKey = '';
             rgStatus.textContent = '登録に失敗しました。通信環境を確認してね';
           });
+        }
+
+        btnRegister.addEventListener('click', function(){
+          var name = nameInput.value.replace(/\s+/g, ' ').trim();
+          if (!name){ rgStatus.textContent = '名前を入れてね'; nameInput.focus(); return; }
+          try { localStorage.setItem('zt_name', name); } catch(e){}
+          savedName = name;
+          submitScore(name, false);
         });
+
+        // Auto-register on game end when a name is already saved on this device.
+        var resultOverlay = document.getElementById('overlay-result');
+        if (resultOverlay && window.MutationObserver){
+          var observer = new MutationObserver(function(){
+            if (!resultOverlay.hidden && savedName){
+              var r = currentResult();
+              var key = r.score + '|' + r.hits;
+              if (r.score > 0 && key !== submittedKey){
+                submitScore(savedName, true);
+              }
+            }
+          });
+          observer.observe(resultOverlay, { attributes: true, attributeFilter: ['hidden'] });
+        }
 
         ['btn-again', 'btn-start'].forEach(function(id){
           var b = document.getElementById(id);
-          if (b) b.addEventListener('click', function(){ rgStatus.textContent = ''; });
+          if (b) b.addEventListener('click', function(){
+            rgStatus.textContent = '';
+            submittedKey = '';
+            btnRegister.classList.remove('stop');
+          });
         });
 
         function esc(s){

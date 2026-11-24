@@ -315,6 +315,43 @@
       .result-grid .rl{ font-size:11px; letter-spacing:.12em; color:var(--ink-dim); font-weight:700; }
       .result-grid .rv{ font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; }
 
+      /* Ranking registration (result overlay) */
+      .rank-form{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; }
+      .rank-form input{
+        flex:1 1 160px; max-width:250px; background:rgba(255,255,255,.07);
+        border:1px solid var(--panel-line); border-radius:99px; padding:10px 16px;
+        color:var(--ink); font:inherit; font-size:15px; min-height:48px;
+      }
+      .rank-form input::placeholder{ color:var(--ink-dim); }
+      .btn-small{ padding:10px 20px; font-size:15px; }
+      .rg-status{ margin:0; font-size:13px; color:var(--gold); font-weight:700; }
+
+      /* Ranking modal */
+      .rank-modal-backdrop{
+        position:fixed; inset:0; z-index:60; background:rgba(2,4,12,.72);
+        display:flex; align-items:center; justify-content:center; padding:16px;
+      }
+      .rank-modal-backdrop[hidden]{ display:none; }
+      .rank-modal{
+        background:var(--panel); border:1px solid var(--panel-line); border-radius:16px;
+        width:100%; max-width:520px; max-height:84vh; display:flex; flex-direction:column;
+        padding:18px; box-shadow:0 24px 60px rgba(0,0,0,.5);
+      }
+      .rank-modal-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+      .rank-modal-head h2{ margin:0; font-size:19px; letter-spacing:.05em; }
+      .rank-total{ margin:8px 0 4px; font-size:13px; color:var(--ink-dim); }
+      .rank-list{ overflow-y:auto; margin-top:6px; }
+      .rank-row{
+        display:flex; align-items:baseline; gap:10px; padding:8px 6px;
+        border-bottom:1px solid rgba(255,255,255,.07); font-size:14px;
+      }
+      .rank-row .no{ width:2.4em; flex:none; font-weight:900; color:var(--gold); font-variant-numeric:tabular-nums; }
+      .rank-row .nm{ flex:1; word-break:break-all; font-weight:700; text-align:left; }
+      .rank-row .tt{ color:var(--ink-dim); font-size:12px; flex:none; }
+      .rank-row .sc{ flex:none; font-weight:900; font-variant-numeric:tabular-nums; }
+      .rank-row.me{ background:rgba(245,197,66,.13); border-radius:8px; }
+      .rank-empty{ color:var(--ink-dim); font-size:14px; text-align:center; padding:18px 0; margin:0; }
+
       .howto{
         margin-top:18px; background:var(--panel); border:1px solid var(--panel-line);
         border-radius:14px; padding:14px 16px;
@@ -395,6 +432,11 @@
             <button class="btn btn-primary" id="btn-again" type="button">もう一回たたく</button>
           </div>
           <p class="copy-note copy-note-main" id="copy-note-main" hidden>コピーしました！Xのリプ欄に貼り付けて投稿できます。</p>
+          <div class="rank-form">
+            <input id="rg-name" type="text" maxlength="24" placeholder="名前（XのIDなど）" autocomplete="off" />
+            <button class="btn btn-primary btn-small" id="btn-register" type="button">ランキングに登録</button>
+          </div>
+          <p class="rg-status" id="rg-status"></p>
         </div>
       </div>
 
@@ -407,6 +449,7 @@
       </div>
 
       <div class="controls">
+        <button class="btn btn-ghost" id="btn-ranking" type="button">ランキング</button>
         <button class="btn btn-ghost" id="btn-sound" type="button" aria-pressed="true">音：オン</button>
       </div>
 
@@ -863,6 +906,116 @@
         });
 
         renderHud();
+      })();
+    </script>
+
+    <div class="rank-modal-backdrop" id="rank-modal" hidden>
+      <div class="rank-modal" role="dialog" aria-label="ランキング">
+        <div class="rank-modal-head">
+          <h2>ランキング</h2>
+          <button class="btn-copy" id="btn-rank-close" type="button">閉じる</button>
+        </div>
+        <p class="rank-total" id="rank-total"></p>
+        <div class="rank-list" id="rank-list"></div>
+      </div>
+    </div>
+
+    <script>
+      (function(){
+        var nameInput = document.getElementById('rg-name');
+        var btnRegister = document.getElementById('btn-register');
+        var rgStatus = document.getElementById('rg-status');
+        var modal = document.getElementById('rank-modal');
+        var rankList = document.getElementById('rank-list');
+        var rankTotal = document.getElementById('rank-total');
+        var savedName = '';
+        try { savedName = localStorage.getItem('zt_name') || ''; } catch(e){}
+        if (savedName) nameInput.value = savedName;
+
+        function currentResult(){
+          var score = parseInt(document.getElementById('r-score').textContent, 10) || 0;
+          var hits = parseInt(document.getElementById('r-hits').textContent, 10) || 0;
+          var comboText = document.getElementById('r-combo').textContent || '';
+          var m = comboText.match(/（(\d+)）/);
+          var combo = m ? parseInt(m[1], 10) : 0;
+          var title = document.getElementById('rank').textContent || '';
+          return { score: score, hits: hits, combo: combo, title: title };
+        }
+
+        btnRegister.addEventListener('click', function(){
+          var name = nameInput.value.replace(/\s+/g, ' ').trim();
+          if (!name){ rgStatus.textContent = '名前を入れてね'; nameInput.focus(); return; }
+          try { localStorage.setItem('zt_name', name); } catch(e){}
+          savedName = name;
+          var r = currentResult();
+          btnRegister.disabled = true;
+          rgStatus.textContent = '登録中…';
+          fetch('/api/score', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, score: r.score, hits: r.hits, combo: r.combo, title: r.title })
+          }).then(function(res){
+            return res.json().then(function(j){ return { ok: res.ok, j: j }; });
+          }).then(function(out){
+            btnRegister.disabled = false;
+            if (out.ok && out.j.ok){
+              if (out.j.updated){
+                rgStatus.textContent = '登録しました！ ' + out.j.rank + '位（' + out.j.total + '人中）';
+              } else {
+                rgStatus.textContent = '自己ベスト ' + out.j.best + '点で登録済み（現在' + out.j.rank + '位）';
+              }
+            } else if (out.j && out.j.error === 'ranking_not_ready'){
+              rgStatus.textContent = 'ランキングは準備中です';
+            } else {
+              rgStatus.textContent = '登録に失敗しました。もう一度試してね';
+            }
+          }).catch(function(){
+            btnRegister.disabled = false;
+            rgStatus.textContent = '登録に失敗しました。通信環境を確認してね';
+          });
+        });
+
+        ['btn-again', 'btn-start'].forEach(function(id){
+          var b = document.getElementById(id);
+          if (b) b.addEventListener('click', function(){ rgStatus.textContent = ''; });
+        });
+
+        function esc(s){
+          return String(s).replace(/[&<>"']/g, function(c){
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+          });
+        }
+
+        function openRanking(){
+          modal.hidden = false;
+          rankTotal.textContent = '読み込み中…';
+          rankList.innerHTML = '';
+          fetch('/api/ranking').then(function(res){ return res.json(); })
+          .then(function(j){
+            if (!j.ok){
+              rankTotal.textContent = j.error === 'ranking_not_ready' ? 'ランキングは準備中です' : '読み込みに失敗しました';
+              return;
+            }
+            rankTotal.textContent = j.total + '人が登録中';
+            if (!j.entries.length){
+              rankList.innerHTML = '<p class="rank-empty">まだ登録がありません。最初の登録者になろう！</p>';
+              return;
+            }
+            rankList.innerHTML = j.entries.map(function(e){
+              var me = savedName && e.name === savedName ? ' me' : '';
+              var tt = e.title ? '<span class="tt">' + esc(e.title) + '</span>' : '';
+              return '<div class="rank-row' + me + '"><span class="no">' + e.rank + '位</span>' +
+                '<span class="nm">' + esc(e.name) + '</span>' + tt +
+                '<span class="sc">' + e.score + '点</span></div>';
+            }).join('');
+          }).catch(function(){
+            rankTotal.textContent = '読み込みに失敗しました。通信環境を確認してね';
+          });
+        }
+
+        document.getElementById('btn-ranking').addEventListener('click', openRanking);
+        document.getElementById('btn-rank-close').addEventListener('click', function(){ modal.hidden = true; });
+        modal.addEventListener('click', function(ev){ if (ev.target === modal) modal.hidden = true; });
       })();
     </script>
   </body>

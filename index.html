@@ -351,6 +351,8 @@
       .rank-row .sc{ flex:none; font-weight:900; font-variant-numeric:tabular-nums; }
       .rank-row.me{ background:rgba(245,197,66,.13); border-radius:8px; }
       .rank-empty{ color:var(--ink-dim); font-size:14px; text-align:center; padding:18px 0; margin:0; }
+      .rank-sec{ margin:12px 0 2px; font-size:13px; font-weight:900; letter-spacing:.06em; color:var(--gold); text-align:left; }
+      .rank-me-info{ margin:0 0 4px; font-size:13px; color:var(--ink-dim); text-align:left; }
 
       .howto{
         margin-top:18px; background:var(--panel); border:1px solid var(--panel-line);
@@ -916,6 +918,7 @@
           <button class="btn-copy" id="btn-rank-close" type="button">閉じる</button>
         </div>
         <p class="rank-total" id="rank-total"></p>
+        <div id="rank-me"></div>
         <div class="rank-list" id="rank-list"></div>
       </div>
     </div>
@@ -986,28 +989,48 @@
           });
         }
 
+        function rowHtml(no, name, title, score, me){
+          var tt = title ? '<span class="tt">' + esc(title) + '</span>' : '';
+          return '<div class="rank-row' + (me ? ' me' : '') + '"><span class="no">' + no + '</span>' +
+            '<span class="nm">' + esc(name) + '</span>' + tt +
+            '<span class="sc">' + score + '点</span></div>';
+        }
+
         function openRanking(){
           modal.hidden = false;
           rankTotal.textContent = '読み込み中…';
           rankList.innerHTML = '';
-          fetch('/api/ranking').then(function(res){ return res.json(); })
+          var rankMe = document.getElementById('rank-me');
+          rankMe.innerHTML = '';
+          var url = '/api/ranking' + (savedName ? '?name=' + encodeURIComponent(savedName) : '');
+          fetch(url).then(function(res){ return res.json(); })
           .then(function(j){
             if (!j.ok){
               rankTotal.textContent = j.error === 'ranking_not_ready' ? 'ランキングは準備中です' : '読み込みに失敗しました';
               return;
             }
             rankTotal.textContent = j.total + '人が登録中';
-            if (!j.entries.length){
-              rankList.innerHTML = '<p class="rank-empty">まだ登録がありません。最初の登録者になろう！</p>';
-              return;
+            if (savedName){
+              var html = '<p class="rank-sec">自分のベスト TOP3</p>';
+              if (j.me){
+                html += '<p class="rank-me-info">' + esc(j.me.name) + ' さん：現在 ' + j.me.rank + '位（ベスト ' + j.me.best + '点）</p>';
+                html += j.me.myTop3.map(function(r, i){
+                  return rowHtml((i + 1) + '', '', r.title, r.score, true);
+                }).join('');
+              } else {
+                html += '<p class="rank-me-info">まだ登録がありません。結果画面から登録してね</p>';
+              }
+              rankMe.innerHTML = html;
             }
-            rankList.innerHTML = j.entries.map(function(e){
-              var me = savedName && e.name === savedName ? ' me' : '';
-              var tt = e.title ? '<span class="tt">' + esc(e.title) + '</span>' : '';
-              return '<div class="rank-row' + me + '"><span class="no">' + e.rank + '位</span>' +
-                '<span class="nm">' + esc(e.name) + '</span>' + tt +
-                '<span class="sc">' + e.score + '点</span></div>';
-            }).join('');
+            var listHtml = '<p class="rank-sec">全体ランキング TOP10</p>';
+            if (!j.entries.length){
+              listHtml += '<p class="rank-empty">まだ登録がありません。最初の登録者になろう！</p>';
+            } else {
+              listHtml += j.entries.map(function(e){
+                return rowHtml(e.rank + '位', e.name, e.title, e.score, savedName && e.name === savedName);
+              }).join('');
+            }
+            rankList.innerHTML = listHtml;
           }).catch(function(){
             rankTotal.textContent = '読み込みに失敗しました。通信環境を確認してね';
           });

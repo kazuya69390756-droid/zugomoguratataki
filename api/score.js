@@ -1,9 +1,10 @@
 // POST /api/score {name, score, hits, combo, title}
-// Registers the player's best score in the ranking.
+// Keeps each player's best-3 runs; the overall ranking uses the best score.
 const { redisCmd, redisConfig } = require('./_redis');
 
 const RANK_KEY = 'zt:ranking';
 const DETAIL_KEY = 'zt:details';
+const TOP3_KEY = 'zt:top3';
 
 function cleanName(v) {
   if (typeof v !== 'string') return '';
@@ -40,24 +41,35 @@ module.exports = async (req, res) => {
     return;
   }
   try {
+    const run = { score, hits, combo, title, ts: Date.now() };
+    // personal top 3
+    let top3 = [];
+    const rawTop3 = await redisCmd(['HGET', TOP3_KEY, name]);
+    if (rawTop3) { try { top3 = JSON.parse(rawTop3); } catch (e) { top3 = []; } }
+    if (!Array.isArray(top3)) top3 = [];
+    top3.push(run);
+    top3.sort((a, b) => b.score - a.score);
+    top3 = top3.slice(0, 3);
+    await redisCmd(['HSET', TOP3_KEY, name, JSON.stringify(top3)]);
+    // overall ranking = best score
+    const best = top3[0].score;
     const prev = await redisCmd(['ZSCORE', RANK_KEY, name]);
     const prevScore = prev === null ? -1 : Number(prev);
-    let best = prevScore;
-    if (score > prevScore) {
-      await redisCmd(['ZADD', RANK_KEY, score, name]);
-      await redisCmd(['HSET', DETAIL_KEY, name, JSON.stringify({
-        score, hits, combo, title, ts: Date.now(),
-      })]);
-      best = score;
+    const updated = best > prevScore;
+    if (updated) {
+      const bestRun = top3[0];
+      await redisCmd(['ZADD', RANK_KEY, best, name]);
+      await redisCmd(['HSET', DETAIL_KEY, name, JSON.stringify(bestRun)]);
     }
     const rankIdx = await redisCmd(['ZREVRANK', RANK_KEY, name]);
     const total = await redisCmd(['ZCARD', RANK_KEY]);
     res.status(200).json({
       ok: true,
-      updated: score > prevScore,
+      updated,
       best,
       rank: rankIdx === null ? null : rankIdx + 1,
       total,
+      myTop3: top3,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: 'server_error' });

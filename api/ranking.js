@@ -15,7 +15,7 @@ function titleFor(s) {
   if (s >= 2000) return '鉄板ハンター';
   if (s >= 1500) return 'パドックの達人';
   if (s >= 1000) return '見習い予想家';
-  if (s >= 500) return 'まだまだこれから';
+  if (s >= 500) return '悪徳予想屋に注意';
   return 'ずごに遊ばれた';
 }
 
